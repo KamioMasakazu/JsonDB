@@ -1,0 +1,33 @@
+{
+	"name": "test db",
+	"int_val": 1,
+	"float_val": 1.1,
+	"string_val": "hoge",
+	"special.chars|key": "with . & |",
+	"null_value": null,
+	"bool_value": true,
+	"array": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+	"object": {
+		"hoge": "hoge",
+		"fuga": "fuga"
+	},
+	"object2": {
+		"aaa": {
+			"xxx": 1,
+			"yyy": "aaa"
+		},
+		"bbb": {
+			"xxx": 2,
+			"yyy": "bbb"
+		},
+		"ccc": {
+			"xxx": 3,
+			"yyy": "ccc"
+		}
+	},
+	"object_array": [
+		{"fld1": "aaa", "fld2": 111, "flg3": "AAA"},
+		{"fld1": "bbb", "fld2": 222, "flg3": "BBB"},
+		{"fld1": "ccc", "fld2": 333, "flg3": "CCC"}
+	]
+}
