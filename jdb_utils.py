@@ -73,7 +73,7 @@ def init_logger(logger: logging.Logger, name: str, option: dict):
 		log_dir = log_path.parent
 		os.makedirs(log_dir, exist_ok = True)
 
-		handler = logging.FileHandler(f"{option["log"]}", mode='a')
+		handler = logging.FileHandler(f"{option['log']}", mode='a')
 		#handler.setLevel(logging.DEBUG)	# これはなくても良い
 		handler.setFormatter(logging.Formatter(FORMATTER))
 		logger.addHandler(handler)
