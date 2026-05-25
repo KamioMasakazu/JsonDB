@@ -69,10 +69,12 @@ jdbサーバをプロセス。
 ### 
 jdb_server.py [start|stop|list] [-c db_name] [-f files ...] [-F]
 
+#### 位置引数
 start サーバを起動する。省略時のデフォルト。  
 stop サーバを停止する。-c, -f, -Fは無視する。  
 list サーバの名前リスト。-d以外のオプションを無視する。  
 
+#### オプション
 -c db_name 起動した後空のデータベースをdb_nameで作成する。  
 -f files... 指定したファイルを起動時にデータベースとしてロードする。DB名はファイル名のパスと拡張子を除いたもの。  
 -F フォアグラウンドで実行する。Ctrl+Cで停止できる。  
@@ -109,18 +111,25 @@ $TMPDIRにjdb_server.???.pidとjdb_server.???.socketを作る。
 ???はサーバ名。  
 pidファイルは起動中のサーバのPIDを記録する。  
 socketファイルはUnix Domainのソケット。  
-SIGKILLなどで殺したときはゴミが残るので手動で消すこと。  
-SIGTERMとSIGINTはこれらを削除して終了する。
+SIGTERMとSIGINTはこれらを削除して終了する。  
+⚠️SIGKILLなどで殺したときはゴミが残るので手動で消すこと。  
+
 
 ## jdb_load.py
 jdb_serverにJSONをロードする。  
-複数ファイルをロードできる。
+繰り返し実行することで複数ファイルをロードできる。  
+再ロードすることでリセットできる。
 
 ### コマンドライン
-jdb_load.py \<path> [-a|--alias alias]  
-path: jsonファイルへのパス
-alias: jdb_serverでのデータベース名。指定しなければjsonファイルの拡張子を除いた名前になる。
+jdb_load.py [path] [-a|--alias alias]  
+pathか-a aliasの少なくとも一方は必要。  
 aliasだけを指定したら空のデータベースを作成する。
+
+#### 位置引数
+path: jsonファイルへのパス  
+
+### オプション
+-a|--alias jdb_serverでのデータベース名。指定しなければjsonファイルの拡張子を除いた名前になる。  
 
 ### 使用例
 ```shell
@@ -140,7 +149,11 @@ $ ./jdb_load.py -a new_db
 
 ### コマンドライン
 jdb_save.py \<db_name> [path]  
-alias: jdb_serverでのデータベース名。  
+
+#### 位置引数
+dn_name: jdb_serverでのデータベース名。  
+
+#### オプション
 path: jsonファイルへのパス。指定しなければ上書きする。
 
 ### 使用例
@@ -156,6 +169,8 @@ $ ./jdb_save.py my_test ./databases/test2.json
 
 ### コマンドライン
 jdb_listdb.py [db_mane ...]  
+
+#### 位置引数
 db_name: 存在確認するデータベース名。  
 引数無しならロードされているデータベースのリスト取得。
 
@@ -172,17 +187,15 @@ $ ./jdb_listdb.py none
 []
 ```
 
-1つ目はロードされているデータベースのリストを取得。  
-2つ目はtestデータベースがあるかを確認。  
-3つ目はデータベースがなかった時。  
-
 ## jdb_query.py
 データベース（JSON）を検索して結果を返す。
 
 ### コマンドライン
 jdb_query.py [--print key|count] \<query_string>  
+
+# 位置引数
 query_string：クエリ文字列。後述のクエリパスとフィルタを参照。  
-※ クエリ文字列はシェルの展開を抑制するため'シングルクォート'で囲んだほうが良い。
+⚠️ クエリ文字列はシェルの展開を抑制するため'シングルクォート'で囲んだほうが良い。
 
 #### オプション
 --print key|count  
@@ -253,7 +266,14 @@ $ ./jdb_query.py 'test.object_array.:2.fld1|flg3'
 検索の絞り込み条件を@...で付加できる。
 
 #### 数値、文字列フィルタ
-@null、@!null、@true、@false、@数値、@"文字列"（ダブルクォートで括らないとダメ）で完全一致のフィルタをかける。これは末尾要素（それ以上子要素がない要素=クエリパスの末尾）にしか使用できない。
+完全一致のフィルタをかける。
+
+- @null（nullと一致）、@!null（nullでないものと一致）
+- @true、@false
+- @数値
+- @"文字列"（ダブルクォートで括らないとダメ）
+
+これは末尾要素（それ以上子要素がない要素=クエリパスの末尾）にしか使用できない。
 
 ```shell
 # 数値
@@ -280,6 +300,7 @@ test db
 - @{"IS_NULL": true|false}でnullと同値かnullと同値でないかの比較フィルタ
 - @{"RANGE": ["配列要素指定書式", ...]}か@{"RANGE": "配列要素指定書式をコンマ区切り"}で範囲フィルタ
 - @{"REGEX": "正規表現"}で正規表現フィルタ
+
 これらも末尾要素にしか指定できない。  
 
 ⚠️ RANGEフィルタのスライス表記は配列要素指定と意味が異なる。  
@@ -311,14 +332,14 @@ $ ./jdb_query.py 'test.object_array.:.fld2@{"IS_NULL":false}'
 ```
 
 #### 途中要素に指定する
-JSON形式でフィールド名とフィルタを記述すると途中要素もフィルタできる。  
-@{"フィールド名": null}  ※!nullは指定できない  
-@{"フィールド名": 真偽値}  
-@{"フィールド名": 数値}  
-@{"フィールド名": "文字列"}  
-@{"フィールド名": {"IS_NULL": true|false}}  
-@{"フィールド名": {"RANGE": [範囲指定]}}  
-@{"フィールド名": {"REGEX": "正規表現"}}
+JSON形式でキーとフィルタを記述すると途中要素もフィルタできる。  
+- @{"キー": null}  ※!nullは指定できない  
+- @{"キー": true|false}  
+- @{"キー": 数値}  
+- @{"キー": "文字列"}  
+- @{"キー": {"IS_NULL": true|false}}  
+- @{"キー": {"RANGE": [範囲指定]}}  
+- @{"キー": {"REGEX": "正規表現"}}
 
 ```shell
 # 前述の末尾要素へのREGEXフィルタとは異なり、
@@ -355,11 +376,13 @@ $ ./jdb_query.py 'test.array@{"RANGE": ":"}'
 
 ### コマンドライン
 jdb_add.py \<target> \<key> \<value>  
+
+#### 位置引数
 target：クエリ文字列。jdb_queryと同じ。オブジェクトか配列のキーを指定しなければならない。
 key: 新規に追加するキー。  
- targetが配列要素のキーのときはappendかextendを指定すること。
- appendは配列に値を追加する。  
- extendは配列型の値を連結する。  
+　targetが配列要素のキーのときはappendかextendを指定すること。  
+　appendは配列に値を追加する。  
+　extendは配列型の値を連結する。  
 value：更新後の値。文字列、数値、JSONで指定。
 
 ### 使用例
@@ -379,6 +402,8 @@ SUCCESS
 
 ### コマンドライン
 jdb_delete.py \<target>  
+
+#### 位置引数
 target：クエリ文字列。jdb_queryと同じ。
 
 ### 使用例
@@ -400,6 +425,8 @@ SUCCESS(2)
 
 ### コマンドライン
 jdb_query.py \<query_string> \<value>  
+
+#### 位置引数
 query_string：クエリ文字列。jdb_queryと同じ。  
 value：更新後の値。文字列、数値、JSONで指定。
 
@@ -416,8 +443,8 @@ $ ./jdb_update.py 'test.object_array.:@{"fld1": {"REGEX": "aaa|bbb"}}.fld2' 999
 SUCCESS(2)
 # nullに設定
 $ ./jdb_update.py 'test.int_val' null
-# true（真偽値）に設定
 SUCCESS(1)
+# true（真偽値）に設定
 $ ./jdb_update.py 'test.int_val' true
 SUCCESS(1)
 ```
