@@ -43,7 +43,7 @@ logger.addHandler(logging.NullHandler())
 # 汎用関数
 ###############################################################################
 # このファイルのデバッグ用
-def _dbg(message: str, obj:any = None):
+def _dbg(message: str, obj:any = None, *, disp_none=False):
 	""" デバッグ出力用
 	Args:
 		message: メッセージ
@@ -51,7 +51,10 @@ def _dbg(message: str, obj:any = None):
 	"""
 	if not PRIVATE_DEBUG: return
 	print(f"PRIVATE DEBUG: {message}")
-	pprint(obj)
+	if obj == None:
+		if disp_none: pprint(obj)
+	else:
+		pprint(obj)
 	print("")
 
 # ロギング
@@ -102,7 +105,7 @@ def default_args(parser):
 	parser.add_argument("-s", "--socket", type=str, default="default", help="Unixdomain socket nmae (without path & ext).")
 	parser.add_argument("-d", "--debug", action="store_true", help="Debug mode.")
 	parser.add_argument("-l", "--log", type=str, default=None, help="log file (ex. ./log/jsb.log).")
-	parser.add_argument("--version", action="version", version="%(prog)s 0.1.0")
+	parser.add_argument("--version", action="version", version="%(prog)s 0.1.1")
 
 # テンポラリディレクトリのパスを返す
 def tmp_path() -> str:
@@ -167,7 +170,6 @@ def _split_by_unescaped_char(text: str, delimiter: str) -> list[str]:
 	results.append("".join(current))
 	return results
 
-
 def _trim_quotes_only(text: str) -> str:
 	"""文字列の外側にダブルクォートがある場合のみそれを取り除く"""
 	text = text.strip()
@@ -175,6 +177,71 @@ def _trim_quotes_only(text: str) -> str:
 		return text[1:-1]
 	return text
 
+def _is_slices(slices: list) -> list:
+	"""  {"RANGE": ["n", ...]}のリストがスライス表記かをチェックする
+	チェック後のリストを返す。整数項目があったら文字列にする。
+	エラー時は例外を投げる。
+	"""
+	ret = []
+	if not isinstance(slices, list):
+		raise ValueError(
+				f"Query parse error: must be array of alices.\n"
+				f"Node context: '{filter}'"
+			)
+
+	for s in slices:
+		s = str(s)	# 強制的に文字列にする
+		if not re.match(r"^(\d+|\:|:\d+|\d+:|\d+:\d+)$", s):
+			raise ValueError(
+					f"Query parse error: only slice notation is available.\n"
+					f"Node context: '{filter}'"
+				)
+		ret.append(s)
+	
+	return ret
+
+def _parse_terminal(filter: any) -> bool:
+	""" 末尾要素の値でパースが必要ならパースする（破壊的）。
+	filterが{"REGEX": ...}, {"RANGE": ...}, {"IS_NULL": true|false}, null, 真偽値, 数値, 文字列ならtrueを返す。
+	{"RANGE": "2, 4:"}の様な文字列表記なら{"RANGE": ["2", "4":]}の配列に変換する。
+	そうで無ければfalseを返す。
+	"""
+#	_dbg(f"_parse_terminal()\n{filter}")
+	if isinstance(filter, dict):
+		# 文字列表記のスライスを配列に変換
+		if "RANGE" in filter and isinstance(filter["RANGE"], str):
+			filter["RANGE"] = _split_by_unescaped_char(filter["RANGE"], ",")
+
+		# 配列の中身がスライス表記だけでできていることを確認
+		if "RANGE" in filter:
+			filter["RANGE"] = _is_slices(filter["RANGE"])
+		
+		# その他JSON形式の末尾フィルタのタイプかをチェック
+		if ("REGEX" in filter) or ("RANGE" in filter) or ("IS_NULL" in filter):
+			return True
+	if filter == None or isinstance(filter, (bool, int, float, str)):
+			return True
+	
+	return False
+
+def _parse_json_more(filter: dict | list):
+	""" JSON型のフィルタを更にパースする（破壊的）
+	"""
+#	_dbg(f"_parse_json_more():\n{pformat(filter)}")
+	if not isinstance(filter, (dict, list)):
+		return
+
+	if isinstance(filter, list):
+		for child in filter:
+			is_terminal = _parse_terminal(child)
+			if not is_terminal: _parse_json_more(child)
+	elif isinstance(filter, dict):
+		for key in filter:
+			child = filter[key]
+			is_terminal = _parse_terminal(child)
+			if not is_terminal: _parse_json_more(child)
+
+	return
 
 def _parse_filter(filter_str: str) -> tuple[str, any]:
 	"""フィルター文字列を解析して (filter_type, filter_value) を返す。
@@ -225,12 +292,18 @@ def _parse_filter(filter_str: str) -> tuple[str, any]:
 	if isinstance(parsed, dict) and "REGEX" in parsed:
 		return "REGEX", parsed
 	if isinstance(parsed, dict) and "RANGE" in parsed:
+		# {"RANGE": "2,4:"}の様な文字列指定にも対応
+		if isinstance(parsed["RANGE"], str):
+			parsed["RANGE"] = _split_by_unescaped_char(parsed["RANGE"], ",")
+		parsed["RANGE"] = _is_slices(parsed["RANGE"])	# パースした結果がスライス表記だけで構成されているか確認
 		return "RANGE", parsed
 	if isinstance(parsed, dict) and "IS_NULL" in parsed:
 		return "IS_NULL", parsed
 	if isinstance(parsed, str):
 		return "STRING", parsed
 
+	# JSON型フィルタなら更に内部をパース
+	_parse_json_more(parsed)
 	return "JSON", parsed
 
 # 設定値のパース
@@ -386,6 +459,7 @@ def parse_query_string(target: str) -> list[dict]:
 			for p in parts
 			if p.strip()
 		):
+			# ここに来た時は配列のスライス表記であることは確定
 			node_info["node_type"] = "ARRAY"
 			node_info["target"] = [
 				_trim_quotes_only(p)
@@ -409,7 +483,7 @@ def parse_query_string(target: str) -> list[dict]:
 			# 仕様チェック: 中間ノードなのにJSON以外のフィルターが指定された場合は例外を投げる
 			if not is_last_node and f_type in ("STRING", "NUMBER", "BOOL", "NULL"):
 				raise ValueError(
-					f"Query parse error: Intermediate node cannot have a primitive filter (STRING or NUMBER).\n"
+					f"Query parse error: Intermediate node cannot have a primitive filter (NULL, BOOL, NUMBER or STRING).\n"
 					f"Node context: '{node_str}'"
 				)
 
@@ -471,7 +545,7 @@ def _get_array_nums(targets: list, max_no: int) -> list[int]:
 	ptn3 = re.compile(r"^:\d+$")
 	ptn4 = re.compile(r"^\d+$")
 	for t in targets:
-		t = t.strip()
+		t = str(t.strip())	# 例外にならない様文字列にする
 		if ptn0.match(t):
 			ret += [i for i in range(0, max_no)]
 			break	# 全件なので後は必要ない
@@ -497,8 +571,8 @@ def _get_array_nums(targets: list, max_no: int) -> list[int]:
 	return list(set(ret))
 
 # 範囲チェック
-def _check_range(target_val: int | float ,f_val: list[int | float]):
-	""" 範囲チェックを行う。
+def _check_range(target_val: int | float ,f_val: list[str]) -> bool:
+	""" 範囲フィルタ用に範囲チェックを行う。
 	"""
 #	_dbg("_check_range(): target_val", target_val)
 #	_dbg("_check_range(): f_val", f_val)
@@ -513,6 +587,7 @@ def _check_range(target_val: int | float ,f_val: list[int | float]):
 
 	ret = False
 	for s in f_val:
+		s = str(s)	# 例外にならないよう文字列にする
 		if s == ":":
 			ret = True
 			break

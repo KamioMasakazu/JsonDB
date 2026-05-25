@@ -82,7 +82,7 @@ list サーバの名前リスト。-d以外のオプションを無視する。
 ```shell
 # 単に実行
 $ ./jdb_server.py
-# フォアグラウンドで実行しデバッグ出力あり（デバッグに便利）
+# フォアグラウンドで実行し標準エラー出力あり（デバッグに便利）
 $ ./jdb_server -F -d
 # 起動時にdefaultという空のDBを作成
 $ ./jdb_server -c default
@@ -145,12 +145,11 @@ path: jsonファイルへのパス。指定しなければ上書きする。
 
 ### 使用例
 ```shell
+# sampleデータベースを元のファイルに上書き
 $ ./jdb_save.py sample
+# sampleデータベースを./databases/test2.jsonに書き出し
 $ ./jdb_save.py my_test ./databases/test2.json 
 ```
-
-1つ目はsampleを./databases/sample.jsonに上書きする。  
-2つ目はmy_testを./databases/test2.jsonに書き出す。
 
 ## jdb_listdb.py
 ロードされているデータベース名をリストする。または、データベースがロードされているかを確認する。
@@ -162,10 +161,13 @@ db_name: 存在確認するデータベース名。
 
 ### 使用例
 ```shell
+# ロードされている全DB名
 $ ./jdb_listdb.py 
 ['sample', 'test']
+# testというDBがあるか
 $ ./jdb_listdb.py test
 ['test']
+# noneというDBがあるか
 $ ./jdb_listdb.py none
 []
 ```
@@ -239,8 +241,10 @@ $ ./jdb_query.py 'test.object_array.:2.fld1'
 返却値は必ず配列形式で返る。
 
 ```shell
+# int_valかstring_val
 $ ./jdb_query.py 'test.int_val|string_val'
 [1, "hoge"]
+# object_arrayの全要素からfld1とflg3を取り出す
 $ ./jdb_query.py 'test.object_array.:2.fld1|flg3'
 [["aaa", "AAA"], ["bbb", "BBB"]]
 ```
@@ -274,14 +278,27 @@ test db
 
 #### IS_NULL、RANGE、REGEXフィルタ
 - @{"IS_NULL": true|false}でnullと同値かnullと同値でないかの比較フィルタ
-- @{"RANGE": ["配列要素指定書式", ...]}で範囲フィルタ
+- @{"RANGE": ["配列要素指定書式", ...]}か@{"RANGE": "配列要素指定書式をコンマ区切り"}で範囲フィルタ
 - @{"REGEX": "正規表現"}で正規表現フィルタ
-これらも末尾要素にしか指定できない。
+これらも末尾要素にしか指定できない。  
+
+⚠️ RANGEフィルタのスライス表記は配列要素指定と意味が異なる。  
+　 配列要素指定'target.array.2:5'はarrayの**要素番号が**2以上5未満のもの。  
+　 RANGEフィルタの'target.array.:@{"RANGE": "2:5"}'はarrayの要素で**値が**2以上5未満のもの
 
 ```shell
 # 範囲指定
-./jdb_query.py 'test.array.:@{"RANGE": ["2:5"]}'
+$ ./jdb_query.py 'test.array.:@{"RANGE": ["2:5"]}'
 [2, 3, 4]
+# 範囲指定（文字列指定でも良い）
+$ ./jdb_query.py 'test.array.:@{"RANGE": "2:5"}'
+[2, 3, 4]
+# 複数範囲指定（2<=n<5と8<=n<9）
+$ ./jdb_query.py 'test.array.:@{"RANGE": ["2:5", "8:9"]}'
+[2, 3, 4, 8]
+# コンマ区切りの文字列でも良い
+$ ./jdb_query.py 'test.array.:@{"RANGE": "2:5,8:9"}'
+[2, 3, 4, 8]
 # 範囲指定2
 $ ./jdb_query.py 'test.object_array.:.fld2@{"RANGE": [":200"]}'
 [111]
@@ -309,6 +326,28 @@ JSON形式でフィールド名とフィルタを記述すると途中要素も�
 # なのでオブジェクトが返ってくる。
 $ ./jdb_query.py 'test.object_array.:@{"fld1": {"REGEX": "b.*"}}'
 [{"fld1": "bbb", "fld2": 222, "flg3": "BBB"}]
+# 複数項目の指定もOK
+$ ./jdb_query.py 'test.object_array.:@{"fld1": {"REGEX": "a+"}, "fld2": {"RANGE": "0:300"}}'
+[{"fld1": "aaa", "fld2": 111, "flg3": "AAA"}]
+# フィルタの後にパス
+$ ./jdb_query.py 'test.object_array.:@{"fld2": {"RANGE": "0:300"}}.flg3'
+["AAA", "BBB"]
+# パスの複数箇所にフィルタをつけてもOK
+$ ./jdb_query.py 'test.object_array.:@{"fld2": {"RANGE": "0:300"}}.flg3@"AAA"'
+["AAA"]
+```
+
+⚠️ 配列への範囲フィルタ  
+フィルタは値を比較するものである。配列やオブジェクトと値を比較しても決して一致しない。
+```shell
+# これは正しい
+# array.:はarrayの全要素。その個別の値に対して@{"RANGE": ":"}フィルタがかかる。
+$ ./jdb_query.py 'test.array.:@{"RANGE": ":"}'
+[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+# これはヒットしない。
+# arrayは配列そのもので、配列と値の範囲は比較できない
+$ ./jdb_query.py 'test.array@{"RANGE": ":"}'
+
 ```
 
 ## jdb_add.py

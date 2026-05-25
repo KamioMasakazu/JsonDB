@@ -54,9 +54,9 @@ class Client:
 
 
 	# 送信処理
-	def send(self, command: str):
+	def send(self, command: str) -> str:
 		""" commandのJSON文字列を送信する
-
+		
 		Args:
 			command: Clientの利用先プログラムで作成したコマンドのJSON文字列。
 				次のような形式。
@@ -65,20 +65,25 @@ class Client:
 					...
 				}
 				mode以外は実装するクライアントごとによる。
+		Return:
+			結果文字列
 		"""
-		self.logger.info("Client::send()")
-		self.logger.debug(f"command: {command}")
+		try:
+			self.logger.info("Client::send()")
+			self.logger.debug(f"command: {command}")
 
-		with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
-			s.connect(self.socket_path)
+			with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+				s.connect(self.socket_path)
 
-			# ファイルオブジェクトに変換（テキストモード、改行文字を自動処理）
-			with s.makefile("rw", encoding="utf-8") as f:
-				f.write(f"{command}\n")
-				f.flush()
+				# ファイルオブジェクトに変換（テキストモード、改行文字を自動処理）
+				with s.makefile("rw", encoding="utf-8") as f:
+					f.write(f"{command}\n")
+					f.flush()
 
-				response = f.readline()
-				return response.strip()
+					response = f.readline()
+					return response.strip()
+		except FileNotFoundError as fnfe:
+			return "ERROR: maybe server is not started."
 
 ###############################################################################
 # 実行用関数
