@@ -26,6 +26,7 @@ import socket
 import argparse
 import json
 import logging
+import traceback
 
 import jdb_utils as utls
 
@@ -56,7 +57,7 @@ class Client:
 	# 送信処理
 	def send(self, command: str) -> str:
 		""" commandのJSON文字列を送信する
-		
+
 		Args:
 			command: Clientの利用先プログラムで作成したコマンドのJSON文字列。
 				次のような形式。
@@ -84,6 +85,10 @@ class Client:
 					return response.strip()
 		except FileNotFoundError as fnfe:
 			return "ERROR: maybe server is not started."
+		except Exception as e:
+			self.logger.error("UNKNOWN ERROR\n" + traceback.format_exc())
+			sys.exit(1)
+
 
 ###############################################################################
 # 実行用関数

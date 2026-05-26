@@ -9,20 +9,33 @@
 	"array": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
 	"object": {
 		"hoge": "hoge",
-		"fuga": "fuga"
+		"fuga": "fuga",
+		"tako": ["ika", "namako"]
 	},
 	"object2": {
 		"aaa": {
 			"xxx": 1,
-			"yyy": "aaa"
+			"yyy": "aaa",
+			"zzz": {
+				"key1": "key11",
+				"key2": "key12"
+			}
 		},
 		"bbb": {
 			"xxx": 2,
-			"yyy": "bbb"
+			"yyy": "bbb",
+			"zzz": {
+				"key1": "key21",
+				"key2": "key22"
+			}
 		},
 		"ccc": {
 			"xxx": 3,
-			"yyy": "ccc"
+			"yyy": "ccc",
+			"zzz": {
+				"key1": "key31",
+				"key2": "key32"
+			}
 		}
 	},
 	"object_array": [

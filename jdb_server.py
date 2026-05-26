@@ -32,6 +32,7 @@ from pprint import pprint, pformat
 import copy
 import glob
 import logging
+import traceback
 
 import jdb_utils as utls
 
@@ -80,7 +81,7 @@ class Server:
 		logger.debug(f"{self.pid_file} deleted.")
 
 	# 未実装機能用のエコー関数
-	def echo(self, command: dict):
+	def echo(self, command: dict) -> str:
 		""" 未実装機能用のエコー関数
 
 		Args:
@@ -107,7 +108,7 @@ class Server:
 		self.json_paths[alias] = path
 
 	# JSONファイルをdatabasesにロードする
-	def load_database(self, command: dict):
+	def load_database(self, command: dict) -> str:
 		"""JSONファイルをdatabasesにロードする
 		json_pathが空なら空のデータベースを作成する。
 		Args:
@@ -135,7 +136,7 @@ class Server:
 		return f"LOAD: {command["alias"]}"
 
 	# 指定されたデータベースをファイルに保存する
-	def save_database(self, command: dict):
+	def save_database(self, command: dict) -> str:
 		"""指定されたデータベースをファイルに保存する
 
 		Args:
@@ -170,7 +171,7 @@ class Server:
 		return "SAVE: OK"
 
 	# データベースのリストを返す
-	def list_databases(self, command: dict):
+	def list_databases(self, command: dict) -> str:
 		"""Jdatabasesに存在するデータベースを照会する。
 		command["databases"]が空なら全データベースを返す。
 		command["databases"]が空でないならデータベース名が一致したもののリストを返す。
@@ -225,7 +226,7 @@ class Server:
 		return (db_name, None)
 
 	# DBを検索して結果を返す
-	def query_db(self, command: dict):
+	def query_db(self, command: dict) -> str:
 		""" DBを検索して結果を返す。
 		結果は基本的にJSON文字列だが、結果がプリミティブ（数値や文字列）になる時はJSON形式ではない文字列を返す。
 
@@ -306,7 +307,7 @@ class Server:
 		return "SUCCESS"
 
 	# DBを更新する
-	def update_db(self, command: dict):
+	def update_db(self, command: dict) -> str:
 		""" DBを検索して更新する。
 		Args:
 			command: jdb_query.pyが送信するコマンド。
@@ -377,7 +378,7 @@ class Server:
 		return f"SUCCESS({updated})"
 
 	# DBを削除する
-	def delete_db(self, command: dict):
+	def delete_db(self, command: dict) -> str:
 		""" DBを検索して削除する。
 		Args:
 			command: jdb_query.pyが送信するコマンド。
@@ -508,7 +509,7 @@ class Server:
 					self.accepted(connection, address)
 					logger.debug(f"disconnect {address}")
 		except Exception as e:
-			logger.error(repr(e))
+			logger.error("UNKNOWN ERROR\n" + traceback.format_exc())
 			sys.exit(1)
 		finally:
 			if os.path.exists(self.socket_path): os.remove(self.socket_path)

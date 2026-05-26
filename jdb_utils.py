@@ -105,7 +105,7 @@ def default_args(parser):
 	parser.add_argument("-s", "--socket", type=str, default="default", help="Unixdomain socket nmae (without path & ext).")
 	parser.add_argument("-d", "--debug", action="store_true", help="Debug mode.")
 	parser.add_argument("-l", "--log", type=str, default=None, help="log file (ex. ./log/jsb.log).")
-	parser.add_argument("--version", action="version", version="%(prog)s 0.1.1")
+	parser.add_argument("--version", action="version", version="%(prog)s 0.1.2")
 
 # テンポラリディレクトリのパスを返す
 def tmp_path() -> str:
@@ -255,7 +255,7 @@ def _parse_filter(filter_str: str) -> tuple[str, any]:
 	if stripped.upper() == "NULL":
 		return "NULL", None
 	if stripped.upper() == "!NULL":
-		return "NULL", "!None"
+		return "NULL", "!null"
 	# bool判定
 	if stripped.upper() == "TRUE":
 		return "BOOL", True
@@ -301,6 +301,8 @@ def _parse_filter(filter_str: str) -> tuple[str, any]:
 		return "IS_NULL", parsed
 	if isinstance(parsed, str):
 		return "STRING", parsed
+	if isinstance(parsed, list):
+		return "ARRAY", parsed
 
 	# JSON型フィルタなら更に内部をパース
 	_parse_json_more(parsed)
@@ -623,7 +625,7 @@ def _evaluate_filter(target_val: any, f_type: str, f_val: any) -> bool:
 
 	# null
 	if f_type == "NULL":
-		if f_val == "!None":
+		if f_val == "!null":
 			return target_val != None
 		elif f_val == None:
 			return target_val == None
@@ -636,7 +638,7 @@ def _evaluate_filter(target_val: any, f_type: str, f_val: any) -> bool:
 		else: return target_val != None
 
 	# null以外の値
-	if f_type == "BOOL" or f_type == "STRING" or f_type == "NUMBER":
+	if f_type in ["BOOL", "STRING", "NUMBER", "ARRAY"]:
 		return target_val == f_val
 	
 	if f_type == "REGEX":
@@ -667,9 +669,11 @@ def _match_node_filter(cursor: dict, filter_dict: dict) -> bool:
 			if not _evaluate_filter(cursor[k], "RANGE", v): return False
 		elif isinstance(v, dict) and "IS_NULL" in v:
 			# IS_NULL: true  -> Nullであるべき (None)
-			# IS_NULL: false -> Nullであってはならない (!None)
-			f_val = None if v["IS_NULL"] else "!None"
+			# IS_NULL: false -> Nullであってはならない (!null)
+			f_val = None if v["IS_NULL"] else "!null"
 			if not _evaluate_filter(cursor[k], "NULL", f_val): return False
+		elif isinstance(v, list):
+			if not _evaluate_filter(cursor[k], "ARRAY", v): return False
 		elif isinstance(v, bool):
 			if not _evaluate_filter(cursor[k], "BOOL", v): return False
 		elif isinstance(v, (int, float)):
@@ -697,7 +701,7 @@ def _check_filter(next_cursor: any, filter_type: str, filter: any) -> bool:
 #	_dbg("filter", filter)
 	if filter_type == "JSON":
 		return _match_node_filter(next_cursor, filter)
-	elif filter_type in ["NUMBER", "STRING", "BOOL", "NULL", "IS_NULL", "RANGE", "REGEX"]:
+	elif filter_type in ["NUMBER", "STRING", "BOOL", "NULL", "IS_NULL", "RANGE", "REGEX", "ARRAY"]:
 		return _evaluate_filter(next_cursor, filter_type, filter)
 	
 	return False
@@ -720,7 +724,7 @@ def _is_valid_key(target: str, cursor: dict) -> bool:
 	return True
 
 # DBの検索
-def search_db(cursor: dict| list, path: list) -> int | float | str | list | dict | FoundValue:
+def search_db(cursor: dict| list, path: list) -> None | bool | int | float | str | list | dict | FoundValue:
 	""" pathに従ってdbを再起的に検索する。
 
 	Args:
