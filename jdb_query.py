@@ -80,12 +80,13 @@ Examples:
     @{"fld1": "aaa", "fld2": 100}
   値部分にIS_NULL、REGEX、RANGEを指定することも可能。末尾要素に指定可能な!nullは指定できないのでIS_NULLを使うこと。
     @{"fld1": {"REGEX": "aaa|zzz"}, "fld2": {"RANGE": ["10:20","50:"]}}
-
-  （注意）JSONフィルタは1階層の要素しか見ない。次のようなフィルタはfld3の比較が常に失敗するので無意味である。
-   @{"fld1": "aaa", "fld2": 100, "fld3": {"sub1": "xx"}}
 """
 		)
 	parser.add_argument("target", type=str, help="検索パスを指定する\n")
+	parser.add_argument("-c", "--choices", type=str, nargs="*", default=[], help="""
+検索結果を更に絞り込むためのフィルタ。フィルタ書式はtargetと同じ。
+ただし、検索結果に対してパスを記述する必要がある点で異なる。
+""")
 	parser.add_argument("--print", type=str, choices=["key", "count"], default=None, help="""
   key: 結果がオブジェクトならキーの配列を表示。オブジェクトで無いなら空文字列。
   count: 結果がオブジェクトか配列なら要素数を表示。そうで無ければ空文字列。
@@ -110,6 +111,7 @@ Examples:
 	command = {
 		"mode": "QUERY",
 		"target": utls.parse_query_string(args.target),
+		"choices": [utls.parse_query_string(n) for n  in args.choices],
 	}
 
 	return (config, options, command)

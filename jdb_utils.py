@@ -32,6 +32,7 @@ from enum import Enum
 import subprocess
 import logging
 from pprint import pprint, pformat
+import fnmatch
 
 PRIVATE_DEBUG = True	# このファイルのデバッグ用
 
@@ -475,8 +476,13 @@ def parse_query_string(target: str) -> list[dict]:
 					_trim_quotes_only(k) for k in multi_keys
 				]
 			else:
-				node_info["node_type"] = "KEY"
-				node_info["target"] = unescaped_node
+				# ワイルドカードを含むか
+				if (node_body[0] != '"' and node_body[-1] != '"') and ("*" in node_body or "?" in node_body):
+					node_info["node_type"] = "MULTI_KEY"
+					node_info["target"] = unescaped_node
+				else:
+					node_info["node_type"] = "KEY"
+					node_info["target"] = unescaped_node
 
 		# フィルターの解析
 		if filter_str is not None:
@@ -681,8 +687,10 @@ def _match_node_filter(cursor: dict, filter_dict: dict) -> bool:
 		elif isinstance(v, str):
 			if not _evaluate_filter(cursor[k], "STRING", v): return False
 		else:
-			# ネストされた dict/list の場合は、これ以上追わずに等価比較にする（割り切り！）
-			if cursor[k] != v: return False
+			# _dbg("_match_node_filter(): cursor", cursor)
+			# _dbg("_match_node_filter(): filter", v)
+			#if cursor[k] != v: return False	# ネストされた dict/list の場合は、これ以上追わずに等価比較にする（割り切り！）
+			return _match_node_filter(cursor[k], v)	# 再起的なフィルタに対応
 			
 	return True
 
@@ -723,6 +731,32 @@ def _is_valid_key(target: str, cursor: dict) -> bool:
 
 	return True
 
+# MULTI_KEYの対象ノード名がシェルのワイルドカードを含む場合を考慮してtargetのリストを整形する
+def list_targets(target: str | list, cursor: dict| list) -> list[str]:
+	""" MULTI_KEYの対象ノード名がシェルのワイルドカードを含む場合を考慮してtargetのリストを整形する
+	
+	Args:
+		target: 検索対象のキーのリストか文字列
+		cursor: 検索対象のノード
+
+	Returns:
+		ワイルドカードを持たない検索対象キーのリスト
+	"""
+	# 配列にする
+	if isinstance(target, str):
+		targets = [target]
+	else:
+		targets = target
+
+	ret = []
+	for key in cursor:
+		for t in targets:
+			if fnmatch.fnmatch(key, t):
+				if not key in ret:
+					ret.append(key)
+
+	return ret
+
 # DBの検索
 def search_db(cursor: dict| list, path: list) -> None | bool | int | float | str | list | dict | FoundValue:
 	""" pathに従ってdbを再起的に検索する。
@@ -745,7 +779,7 @@ def search_db(cursor: dict| list, path: list) -> None | bool | int | float | str
 			dump(logger, "cursor", cursor)
 			return FoundValue.NotFound
 	
-	nexts = path.pop(0)
+	nexts = path.pop(0)	# 次の検索バス
 
 	if (nexts["node_type"] == "ARRAY") and isinstance(cursor, list):
 		max_no = len(cursor)
@@ -760,8 +794,9 @@ def search_db(cursor: dict| list, path: list) -> None | bool | int | float | str
 			if r != FoundValue.NotFound: ret.append(r)
 		return ret
 	elif (nexts["node_type"] == "MULTI_KEY") and isinstance(cursor, dict):
+		targets = list_targets(nexts["target"], cursor)	# ワイルドカードを展開
 		ret = []
-		for n in nexts["target"]:
+		for n in targets:
 			if not _is_valid_key(n, cursor): continue
 
 			if "filter" in nexts:
@@ -784,7 +819,7 @@ def search_db(cursor: dict| list, path: list) -> None | bool | int | float | str
 # DBの検索のテスト
 def test_search_db():
 	global PRIVATE_DEBUG
-	PRIVATE_DEBUG = False
+	PRIVATE_DEBUG = True
 
 	db = {
 		"name": "sample db",
@@ -865,6 +900,14 @@ def test_search_db():
 			{"node_type": "KEY", "target": "object2"},
 			{"node_type": "MULTI_KEY", "target": ["bbb", "ccc"], "filter": {"xxx": 3}, "filter_type": "JSON"},
 		],
+		[
+			{"node_type": "KEY", "target": "object2"},
+			{"node_type": "MULTI_KEY", "target": "*"},
+		],
+		[
+			{"node_type": "KEY", "target": "object2"},
+			{"node_type": "KEY", "target": "*"},
+		],
 	]
 
 	for t in test_pattern:
@@ -877,6 +920,6 @@ def test_search_db():
 if __name__ == "__main__":
 #	test_parse_query_string()
 #	test_parse_list_items()
-#	test_search_db()
-	print(tmp_path())
+	test_search_db()
+#	print(tmp_path())
 	pass

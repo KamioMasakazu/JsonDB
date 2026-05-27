@@ -191,7 +191,7 @@ $ ./jdb_listdb.py none
 データベース（JSON）を検索して結果を返す。
 
 ### コマンドライン
-jdb_query.py [--print key|count] \<query_string>  
+jdb_query.py [--print key|count] \<query_string> [-c additional_query ...]  
 
 # 位置引数
 query_string：クエリ文字列。後述のクエリパスとフィルタを参照。  
@@ -202,9 +202,15 @@ query_string：クエリ文字列。後述のクエリパスとフィルタを�
 key：結果がオブジェクトならオブジェクトのキーの配列を表示する。結果がオブジェクトで無いなら空文字列を表示する。  
 count：結果がオブジェクトか配列なら要素数を表示する。結果がオブジェクトか配列で無いなら空文字列を表示する。  
 
+-c|--choices
+検索結果に対する絞り込み条件を設定する。クエリの書式はtargetと同じ。  
+ただし、検索結果に対してのパスを記述する必要がある。  
+詳細は後述。  
+
 ### クエリパス
 db.path.to.target  
-db名から始まり、目的のキーまでを.（ドット）で繋いだもの。
+db名から始まり、目的のキーまでを.（ドット）で繋いだもの。  
+シェル形式のワイルドカード（*、?）を使用できる。
 返却値は値かJSON文字列である。
 
 #### 単純なパス指定の例
@@ -222,6 +228,12 @@ $ ./jdb_query.py 'test.array'
 # 見つからなかった
 $ ./jdb_query.py 'test.bad_target'
 
+# ワイルドカード（*）
+$ ./jdb_query.py 'test.object.*'
+["hoge", "fuga", ["ika", "namako"]]
+# ワイルドカード（?）
+$ ./jdb_query.py 'test.object.t???'
+[["ika", "namako"]]
 ```
 
 #### 配列の要素指定
@@ -306,15 +318,19 @@ $ ./jdb_query.py 'test.array.:@[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]'
 ```
 
 #### IS_NULL、RANGE、REGEXフィルタ
-- @{"IS_NULL": true|false}でnullと同値かnullと同値でないかの比較フィルタ
-- @{"RANGE": ["配列要素指定書式", ...]}か@{"RANGE": "配列要素指定書式をコンマ区切り"}で範囲フィルタ
-- @{"REGEX": "正規表現"}で正規表現フィルタ
+- @{"IS_NULL": true|false}  
+  nullと同値かnullと同値でないかの比較フィルタ
+
+- @{"RANGE": ["配列要素指定書式", ...]}か@{"RANGE": "配列要素指定書式をコンマ区切り"}  
+  配列要素の値の範囲を指定する。  
+  ⚠️ RANGEフィルタのスライス表記は配列要素指定と意味が異なる。  
+　配列要素指定'target.array.2:5'はarrayの**要素番号が**2以上5未満のもの。  
+　RANGEフィルタの'target.array.:@{"RANGE": "2:5"}'はarrayの要素で**値が**2以上5未満のもの
+
+- @{"REGEX": "正規表現"}  
+  Pythonの正規表現でフィルタ
 
 これらも末尾要素にしか指定できない。  
-
-⚠️ RANGEフィルタのスライス表記は配列要素指定と意味が異なる。  
-　 配列要素指定'target.array.2:5'はarrayの**要素番号が**2以上5未満のもの。  
-　 RANGEフィルタの'target.array.:@{"RANGE": "2:5"}'はarrayの要素で**値が**2以上5未満のもの
 
 ```shell
 # 範囲指定
@@ -381,6 +397,50 @@ $ ./jdb_query.py 'test.array.:@{"RANGE": ":"}'
 $ ./jdb_query.py 'test.array@{"RANGE": ":"}'
 
 ```
+
+### -c（--choices）による絞り込み
+検索結果に対して絞り込みを行うときに使用する。  
+targetのパスを増やすのとは結果が異なるので具体例をもって説明する。  
+
+-cで絞り込みをしないとき次の結果になるとする。
+```shell
+$ ./jdb_query.py 'test.object_array'
+[{"fld1": "aaa", "fld2": 111, "flg3": "AAA"}, {"fld1": "bbb", "fld2": 222, "flg3": "BBB"}, {"fld1": "ccc", "fld2": 333, "flg3": "CCC"}]
+```
+
+targetのパスを伸ばした場合は次の様になる。  
+指定したパスの値だけが結果として得られる。
+```shell
+$ ./jdb_query.py 'test.object_array.:.fld1@{"REGEX": "aaa|bbb"}'
+["aaa", "bbb"]
+```
+
+絞り込みを行うとこの様になる。  
+指定したパスまでの結果の内、fld1が"aaa"か"bbb"のものだけになる。
+```shell
+$ ./jdb_query.py 'test.object_array' -c 'fld1@{"REGEX": "aaa|bbb"}'
+[{"fld1": "aaa", "fld2": 111, "flg3": "AAA"}, {"fld1": "bbb", "fld2": 222, "flg3": "BBB"}]
+```
+絞り込み対象がオブジェクトのとき、最初のキーは無視されることに注意すること。  
+これは絞り込み前の結果の全項目を対象にするためである。  
+絞り込みを行わないときは次の結果。
+```shell
+$ ./jdb_query.py 'test.object2'
+{"aaa": {"xxx": 1, "yyy": "aaa", "zzz": {"key1": "key11", "key2": "key12"}}, "bbb": {"xxx": 2, "yyy": "bbb", "zzz": {"key1": "key21", "key2": "key22"}}, "ccc": {"xxx": 3, "yyy": "ccc", "zzz": {"key1": "key31", "key2": "key32"}}}
+```
+
+絞り込みはこの様に指定する（"aaa"、"bbb"、"ccc"といった最初のキーは無視される）。
+```shell
+$ ./jdb_query.py 'test.object2' -c 'zzz.key1@"key21"'
+{"bbb": {"xxx": 2, "yyy": "bbb", "zzz": {"key1": "key21", "key2": "key22"}}}
+```
+
+絞り込みを使わない、ワイルドカードと再起的なフィルタを使った場合結果は次の様にパス「./jdb_query.py 'test.object2.*」の値の配列になる。
+```shell
+$ ./jdb_query.py 'test.object2.*@{"zzz": {"key1": "key21"}}'
+[{"xxx": 2, "yyy": "bbb", "zzz": {"key1": "key21", "key2": "key22"}}]
+```
+
 
 ## jdb_add.py
 データベースに新規要素を追加する。

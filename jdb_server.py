@@ -225,6 +225,37 @@ class Server:
 		
 		return (db_name, None)
 
+	def _choice_query_result(self, result: dict | list, path: list) -> dict| list:
+		""" クエリ結果の絞り込み
+		"""
+		logger.info("Server::_choice_query_result()")
+		new_result = result
+
+		# 絞り込みがなかったら何もせず返る
+		if not path:
+			return new_result
+
+		if isinstance(result, list):
+			new_result = []
+			for obj in result:
+				ret = utls.search_db(obj, path[:])
+				if ret != utls.FoundValue.NotFound:
+					new_result.append(obj)
+		if isinstance(result, dict):
+			new_result = {}
+			for name, obj in result.items():
+				utls._dbg("name:", name)
+				utls._dbg("obj:", obj)
+				ret = utls.search_db(obj, path[:])
+				if ret != utls.FoundValue.NotFound:
+					new_result[name] = obj
+
+		logger.info("choice query finished")
+		utls.dump(logger, "query result", new_result)
+
+		return new_result
+
+
 	# DBを検索して結果を返す
 	def query_db(self, command: dict) -> str:
 		""" DBを検索して結果を返す。
@@ -240,9 +271,14 @@ class Server:
 		(db_name, msg) = self._check_common_command(command)
 		if not db_name: return ""	# エラーの時に空文字列を返す
 
+		# targetを検索
 		ret = utls.search_db(self.databases, command["target"][:])
 		logger.info("query finished")
 		utls.dump(logger, "query result", ret)
+
+		# 結果を絞り込み
+		for choice in command["choices"]:
+			ret = self._choice_query_result(ret, choice)
 
 		if ret == utls.FoundValue.NotFound:
 			return ""
@@ -348,9 +384,11 @@ class Server:
 					updated += 1
 		elif isinstance(ret, dict):
 			if last["node_type"] == "MULTI_KEY":
-				for t in last["target"]:
+				targets = utls.list_targets(last["target"], ret)
+
+				for t in targets:
 					if not t in ret:
-						logger.info(f'key not found: {last["target"]}')
+						logger.info(f'key not found: {targets}')
 					else:
 						filter_ok = True
 						if "filter_type" in last:
